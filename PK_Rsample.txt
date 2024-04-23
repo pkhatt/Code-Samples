@@ -1,0 +1,76 @@
+#=============================================================
+This is a short excerpt from a larger R code file I developed
+during my RAship with Dr. Xiaoyang Wang at UNM.
+#=============================================================
+
+
+'-------FILL IN MISSING OBSERVATIONS IN COT DATA-----------'
+
+library(dplyr)
+library(tidyr)
+
+colnames(cot_soyoil)[3] <- 'Date'
+
+cot_soyoil$Date <- as.Date(cot_soyoil$Date)
+
+cot_soyoil <- cot_soyoil %>% complete(Date = seq.Date(min(Date), max(Date), by='day')) %>% fill(2:length(cot_soyoil))
+
+colnames(cot_soyoil)[8:10] <- c('Open_Interest','Long_SP', 'Short_SP')
+colnames(cot_soyoil)[12:13] <- c('Long_HP', 'Short_HP')
+
+cot_soyoil[,length(cot_soyoil)+1] <- cot_soyoil$Long_SP + cot_soyoil$Short_SP
+cot_soyoil[,length(cot_soyoil)+1] <- cot_soyoil$Long_HP + cot_soyoil$Short_HP
+
+colnames(cot_soyoil)[18:19] <- c('Total_SP','Total_HP')
+
+
+'----------RUN THE FUNCTIONS IN THIS SECTION--------------'
+
+  
+# Number of days between changes
+# Please provide margin dataset to argument 'data' to obtain row no. of dates of margin changes
+
+## The first list in the output gives the row number of the dates where change occurs
+## The second list in the output gives the difference between the said row numbers
+## The third list in the output gives the average number of days between changes
+
+
+change_days <- function(data){
+  if(is.data.frame(data)){
+    days_row <- list()
+    days <- list()
+    avg_days <- list()
+    vec <- c()
+    vec2 <- c()
+    a <- 1
+    b <- 1
+    k <- 1
+    for(i in 2:ncol(data)){
+      while(k < nrow(data)){
+        if (data[k+1,i] != data[k,i] & data[k:k+1,i] != 0){
+          vec[b] <- k+1
+          if (b==1){
+            vec2[b] <- (k+1) - 1 
+          } else {
+            vec2[b] <- (k+1) - vec[b-1]
+          } 
+          b <- b + 1
+        }
+        k <- k + 1
+      }
+      days_row[[a]] <- vec
+      days[[a]] <- vec2
+      k <- 1
+      a <- a + 1
+      b <- 1
+    }
+    for(j in 2:ncol(data)){
+      avg_days[[j-1]] <- round(mean(days[[j-1]], na.rm = TRUE), digits = 0) 
+    }
+    final_list <- list(days_row, days, avg_days)
+    return(final_list)
+    
+  } else {
+    print("Please enter a valid dataframe")
+  }
+}

@@ -1,0 +1,164 @@
+#############################
+####### Initialize ##########
+#############################
+
+import os
+import numpy as np
+import networkx as nx
+import statistics as stat
+import matplotlib.pyplot as plt
+
+dir = 'C:/Classes/DATA 445/hw3'
+os.chdir(dir)
+
+##############################
+###### Question 2 ############
+##############################
+
+G = nx.read_graphml(dir + '/data/openflights_usa.graphml')
+
+###(a) - average number of routes served by each airport
+def routes(network):
+    airport_list = list(network.nodes())
+    airport_routes = list()
+    airport_routes_list = list()
+
+    for i in range(0, len(network.nodes())):
+        x = (airport_list[i], network.degree(airport_list[i]))
+        airport_routes_list.append(x)
+
+        y = network.degree(airport_list[i])
+        airport_routes.append(y)
+
+    avg_routes = sum(airport_routes) / len(airport_routes)
+    return(avg_routes, airport_routes_list, airport_routes)
+
+mean_routes = routes(G)[0]
+print("Q2, part A: Answer")
+print(round(mean_routes, 4))
+print("", end="\n\n")
+  
+###(b) - Top five airports in terms of number of routes
+def sortSecond(val): 
+    return val[1]
+
+ap_routes = routes(G)[1]
+ap_routes.sort(key=sortSecond, reverse=True)
+
+print("Q2, part B: Answer")
+print('Here is a list of top five airports (IATA codes) with their respective number of routes:')
+print(ap_routes[0:5])
+print("")
+
+print('The names of the top five airports are:')
+print('1) ' + G.nodes[ap_routes[0][0]]['name'])
+print('2) ' + G.nodes[ap_routes[1][0]]['name'])
+print('3) ' + G.nodes[ap_routes[2][0]]['name'])
+print('4) ' + G.nodes[ap_routes[3][0]]['name'])
+print('5) ' + G.nodes[ap_routes[4][0]]['name'])
+print("", end="\n\n")
+
+###(c) - Airports serving only single route
+routes_ap = routes(G)[2]
+single_routes_ap = [x for x in routes_ap if x == 1]
+
+print("Q2, part C: Answer")
+print(str(len(single_routes_ap)) + ' airports serve only a single route in this network')
+print("", end="\n\n")
+
+###(d) - Highest Closeness centrality
+close_cent = nx.closeness_centrality(G)
+
+close_cent_sorted = dict(sorted(close_cent.items(), key = sortSecond, reverse = True))
+closest_airport = list(close_cent_sorted.items())[0]
+
+print("Q2, part D: Answer")
+print(G.nodes[closest_airport[0]]['name'] + ' has the highest closeness centrality')
+print("", end="\n\n")
+
+###(e) - Highest Betweeness centrality
+bet_cent = nx.betweenness_centrality(G)
+
+bet_cent_sorted = dict(sorted(bet_cent.items(), key = sortSecond, reverse = True))
+betest_airport = list(bet_cent_sorted.items())[0]
+
+print("Q2, part E: Answer")
+print(G.nodes[betest_airport[0]]['name'] + ' has the highest betweenness centrality')
+print("", end="\n\n")
+
+###(f) - Heterogeneity parameter
+routes_ap_f = routes(G)[2]
+
+het_num = [x*x for x in routes_ap_f]
+het_den = sum(routes_ap_f) * sum(routes_ap_f)
+
+het_param = (len(G.nodes()) * sum(het_num)) / het_den
+
+print("Q2, part F: Answer")
+print('The heterogeneity parameter is: ' + str(round(het_param, 5)))
+print("", end="\n\n")
+
+##############################
+###### Question 3 ############
+##############################
+
+## Define a network with specified requirements 
+G_q3  = nx.DiGraph()
+edges = [(2, 1),
+         (3, 2),
+         (4, 3),
+         (5, 4), (5, 6), (5, 7),
+         (6, 4), (6, 5), (6, 7),
+         (7, 5), (7, 6)
+         ] 
+
+G_q3.add_edges_from(edges)
+nx.draw(G_q3, with_labels = True)
+plt.savefig('q3_network.png')
+plt.show()
+
+## Define program to check network
+def check_node(network, node):
+
+    #parameters: all nodes
+    cness = list(nx.closeness_centrality(network).values())
+    bness = list(nx.betweenness_centrality(network).values())
+    prank = list(nx.pagerank(network).values())
+
+    cness_25p = np.percentile(cness, q = 25)
+    bness_25p = np.percentile(bness, q = 25)
+    prank_25p = np.percentile(prank, q = 75)
+
+    thresholds = list([cness_25p, bness_25p, prank_25p])
+
+    #parameters: node of interest
+    cness_node = nx.closeness_centrality(network)[1]
+    bness_node = nx.betweenness_centrality(network)[1]
+    prank_node = nx.pagerank(network)[1]
+
+    node_params = list([cness_node, bness_node, prank_node])
+
+    #run check
+    cond_list = list(['closeness', 'betweenness', 'pagerank'])
+    for i in range(0, 3):
+        if i < 2:
+            assert node_params[i] <= thresholds[i], 'The node does not meet the requirements for ' +  cond_list[i]
+            print('The node meets the requirement for ' + cond_list[i])
+        else:
+            assert node_params[i] >= thresholds[i], 'The node does not meet the requirements for ' +  cond_list[i]
+            print('The node meets the requirement for ' + cond_list[i], end = "\n\n")
+
+    return(cness, bness, prank)
+
+            
+## Check network
+print("Q3: Answer")
+check_node(G_q3, 1)
+print("", end="\n\n")
+
+print('Closeness centrality measures')
+print(nx.closeness_centrality(G_q3), end="\n\n")
+print('Betweenness centrality measures')
+print(nx.betweenness_centrality(G_q3), end="\n\n")
+print('PageRank measures')
+print(nx.pagerank(G_q3), end="\n\n")

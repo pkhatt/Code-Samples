@@ -1,0 +1,142 @@
+*//////////////////////////////////////////////////////////////////////////////////
+*// This is a short excerpt from a larger Stata code file that analyzes changes  //
+*// in Average Annual NDVI of landmine-infested areas in Afghanistan that were 	 //
+*// cleared between 2005 and 2020, and also analyzes the pattern of landmine     //
+*// clearance using a TWFE model.				                 //
+*//////////////////////////////////////////////////////////////////////////////////
+
+
+********************************************************************************
+*********************** Run Preliminary Analyses *******************************
+********************************************************************************
+
+** Table of landmine clearance status vs. year of status change
+tab poly_statuschange_year poly_haz_status if ndvi_year == 2005, matcell(freq) matrow(change_year)
+	mat colnames freq = Active Expired Transitional
+	mat colnames change_year = Year
+
+	putexcel set "${output}/AgriPoly_Transition.xlsx", replace
+	putexcel A1 = matrix(change_year) B1 = matrix(freq), colnames
+	putexcel close
+
+** Transition from control to treatment over the years
+tab ndvi_year did_treat
+
+///////////////////////////////////////////////
+/// Create table with Staggered Means data ////
+///////////////////////////////////////////////
+
+/// Multiple blockages ///
+mat year    = J(16, 1, .)
+mat Mean_CB = J(16, 1, .)
+mat SDev_CB = J(16, 1, .)
+mat Num_CB  = J(16, 1, .)
+mat Mean_NY = J(16, 1, .)
+mat SDev_NY = J(16, 1, .)
+mat Num_NY  = J(16, 1, .)
+mat TTest   = J(16, 1, .)
+
+forval i=1/16{
+	local yr = `i' + 4
+	local year_ndvi = 2000 + `yr'
+	mat year[`i',1] = `year_ndvi'
+	
+	** For years 2005-2007
+	if `i' <= 3{
+		qui summ mean_ndvi if ndvi_year == `year_ndvi' & did_treat == 0
+			local mn  = r(mean)
+			local sd  = r(sd)
+			local obs = r(N)
+		
+			mat Mean_NY[`i', 1] = round(`mn', 0.0001)
+			mat SDev_NY[`i', 1] = round(`sd', 0.0001)
+			mat Num_NY[`i', 1]  = `obs'
+			
+		qui summ mean_ndvi if ndvi_year == `year_ndvi' & did_treat == 1
+			local mn_t  = r(mean)
+			local sd_t  = r(sd)
+			local obs_t = r(N)
+			
+			mat Mean_CB[`i', 1] = round(`mn_t', 0.0001)
+			mat SDev_CB[`i', 1] = round(`sd_t', 0.0001) 
+			mat Num_CB[`i', 1]  = `obs_t'
+			
+			ttesti `obs' `mn' `sd' `obs_t' `mn_t' `sd_t'
+			mat TTest[`i', 1] = round(r(p), 0.0001)
+			
+			
+	}
+	** For years 2008-2020
+	else{
+		qui summ mean_ndvi if ndvi_year == `year_ndvi' & did_treat == 0
+			local mn2  = r(mean)
+			local sd2  = r(sd)
+			local obs2 = r(N)
+		
+			mat Mean_NY[`i', 1] = round(`mn2', 0.0001)
+			mat SDev_NY[`i', 1] = round(`sd2', 0.0001)
+			mat Num_NY[`i', 1]  = `obs2'
+			
+		qui summ mean_ndvi if ndvi_year == `year_ndvi' & did_treat == 1 & treat_pre08 != 1
+			local mn2_t  = r(mean)
+			local sd2_t  = r(sd)
+			local obs2_t = r(N)
+		
+			mat Mean_CB[`i', 1] = round(`mn2_t', 0.0001)
+			mat SDev_CB[`i', 1] = round(`sd2_t', 0.0001) 
+			mat Num_CB[`i', 1]  = `obs2_t'
+			
+			ttesti `obs2' `mn2' `sd2' `obs2_t' `mn2_t' `sd2_t'
+			mat TTest[`i', 1] = round(r(p), 0.0001)
+	}
+	
+	if `i' == 16{
+		mat final_SGM = [year, Mean_CB, SDev_CB, Num_CB, Mean_NY, SDev_NY, Num_NY, Num_CB + Num_NY, Mean_CB - Mean_NY, TTest]
+		mat colname final_SGM = Year Mean_ClearedByYear Std_Dev N_Cleared Mean_NotYetCleared Std_Dev N_NotCleared N_Total Difference Ttest
+	} 
+}
+
+** Export matrix as table
+	putexcel set "${output}/Staggered_Means.xlsx", replace
+	putexcel A1 = matrix(final_SGM), colnames
+	putexcel close 
+
+
+
+********************************************************************************
+*********************** Run Blockage Data Analyses *****************************
+******************************************************************************** 
+
+//// TWO-WAY FIXED EFFECTS ////
+
+     *************
+**** BLOCKAGE DATA ****
+     *************
+
+****** Province and Survey Agency Fixed Effects
+local restrictions full_samp T3 _p50 _p70 _p90
+
+foreach var in $blocvars{
+	foreach x in `restrictions'{
+		reghdfe `var' i.poly_statuschange_year if $hazpolycond & $cleared & ${resprov`x'}, absorb(province survey_agency) cluster(province)
+			estimates store `x'_TWSA
+			outreg2 using "${output}/blockages_shocks_TWFE_SurveyAgentFE_`x'.xls", append drop(_cons)
+			
+			coefplot `x'_TWSA, drop(_cons) xline(0) title("`var'_`x'") xscale(range(-0.6(0.1)0.6)) xlabel(-0.6(0.1)0.6)
+			graph export "${plots}/`var'_selection_plot_TWFE_SurveyAgent_`x'.png", replace
+	}
+}
+
+****** Province and Clearing Agency Fixed Effects
+local restrictions full_samp T3 _p50 _p70 _p90
+
+foreach var in $blocvars{
+	foreach x in `restrictions'{
+		reghdfe `var' i.poly_statuschange_year $clearagent if $hazpolycond & $cleared & ${resprov`x'}, absorb(province) cluster(province)
+			estimates store `x'_TWCA
+			outreg2 using "${output}/blockages_shocks_TWFE_ClearAgentFE_`x'.xls", append drop(_cons $clearagent)
+			
+			coefplot `x'_TWCA, drop(_cons $clearagent) xline(0) title("`var'_`x'") xscale(range(-0.6(0.1)0.6)) xlabel(-0.6(0.1)0.6)
+			graph export "${plots}/`var'_selection_plot_TWFE_ClearAgent_`x'.png", replace
+	}
+}
